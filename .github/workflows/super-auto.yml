@@ -1,0 +1,98 @@
+name: Super Automatic Activity
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # daily 8:30 AM IST
+  workflow_dispatch:
+
+jobs:
+  boost:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 1) Auto Commit (0-line real change)
+      - name: Auto Commit
+        run: |
+          date > data_$(date +%F).txt
+          git config --local user.email "actions@github.com"
+          git config --local user.name "github-actions-bot"
+          git add .
+          git commit -m "Auto update: $(date)" || echo "No changes"
+
+      # 2) Auto Issue Create
+      - name: Create Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Daily Issue - " + new Date().toISOString(),
+              body: "Auto-generated issue."
+            });
+
+      # 3) Auto Issue Close
+      - name: Close Old Issues
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open"
+            });
+            for (const issue of issues.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: "closed"
+              });
+            }
+
+      # 4) Auto Pull Request Create
+      - name: Create Branch, Push & PR
+        run: |
+          BR="auto-branch-$(date +%s)"
+          git checkout -b $BR
+          echo "update $(date)" >> log.txt
+          git add .
+          git commit -m "auto PR update"
+          git push origin $BR
+
+      - name: Create PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Auto PR",
+              head: context.ref.replace("refs/heads/", ""),
+              base: "main"
+            });
+
+      # 5) Auto Merge
+      - name: Auto Merge PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open"
+            });
+            for (const pr of prs.data) {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+            }
+
+      # 6) PUSH ALL
+      - name: Push
+        run: git push || true
