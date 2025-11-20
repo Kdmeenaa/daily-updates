@@ -2,97 +2,99 @@ name: Super Automatic Activity
 
 on:
   schedule:
-    - cron: "0 3 * * *"   # daily 8:30 AM IST
+    - cron: "0 5 * * *" # daily at 10:30am IST
   workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   boost:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      # 1) Auto Commit (0-line real change)
-      - name: Auto Commit
-        run: |
-          date > data_$(date +%F).txt
-          git config --local user.email "actions@github.com"
-          git config --local user.name "github-actions-bot"
-          git add .
-          git commit -m "Auto update: $(date)" || echo "No changes"
+    # 1) AUTO COMMIT (forces 1 contribution)
+    - name: Auto Commit
+      run: |
+        echo "Daily update: $(date '+%Y-%m-%d %H:%M:%S')" >> daily-log.txt
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        git commit -m "Daily auto commit" || echo "No changes to commit"
 
-      # 2) Auto Issue Create
-      - name: Create Issue
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: "Daily Issue - " + new Date().toISOString(),
-              body: "Auto-generated issue."
-            });
+    # 2) CREATE DAILY BRANCH
+    - name: Create Branch
+      run: |
+        BRANCH="update-$(date '+%Y%m%d')"
+        git checkout -b $BRANCH
+        echo "Branch created: $BRANCH"
+        git push origin $BRANCH --force
 
-      # 3) Auto Issue Close
-      - name: Close Old Issues
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open"
-            });
-            for (const issue of issues.data) {
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: "closed"
-              });
-            }
+    # 3) AUTO ISSUE CREATE
+    - name: Create Issue
+      id: create_issue
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: "Daily Auto Issue " + new Date().toISOString(),
+            body: "Automatically generated issue for daily activity."
+          });
+          return issue.data.number;
 
-      # 4) Auto Pull Request Create
-      - name: Create Branch, Push & PR
-        run: |
-          BR="auto-branch-$(date +%s)"
-          git checkout -b $BR
-          echo "update $(date)" >> log.txt
-          git add .
-          git commit -m "auto PR update"
-          git push origin $BR
+    # 4) AUTO ISSUE CLOSE
+    - name: Close Issue
+      uses: actions/github-script@v6
+      with:
+        script: |
+          await github.rest.issues.update({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: ${{ steps.create_issue.outputs.result }},
+            state: "closed"
+          });
 
-      - name: Create PR
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: "Auto PR",
-              head: context.ref.replace("refs/heads/", ""),
-              base: "main"
-            });
+    # 5) CREATE PR (from daily branch → auto-activity)
+    - name: Create Pull Request
+      id: pr
+      continue-on-error: true
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const pr = await github.rest.pulls.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: "Daily Auto PR " + new Date().toISOString(),
+            head: "update-" + new Date().toISOString().slice(0,10).replace(/-/g,''),
+            base: "auto-activity"
+          });
+          return pr.data.number;
 
-      # 5) Auto Merge
-      - name: Auto Merge PR
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const prs = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open"
-            });
-            for (const pr of prs.data) {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number
-              });
-            }
+    # 6) AUTO MERGE PR
+    - name: Merge PR
+      continue-on-error: true
+      uses: actions/github-script@v6
+      with:
+        script: |
+          await github.rest.pulls.merge({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: ${{ steps.pr.outputs.result }},
+            merge_method: "merge"
+          });
 
-      # 6) PUSH ALL
-      - name: Push
-        run: git push || true
+    # 7) CLEANUP (delete old branches)
+    - name: Cleanup Branches
+      continue-on-error: true
+      run: |
+        git fetch --all
+        git for-each-ref refs/remotes/origin/update-* --format="%(refname:short)" | while read branch; do
+          git push origin --delete "${branch#origin/}" || true
+        done
