@@ -1,0 +1,26 @@
+name: Daily Auto Commit
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # 7AM EVERYDAY 
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Update README
+      run: |
+        echo "Last update: $(date -u)" > README.md
+
+    - name: Commit changes
+      run: |
+        git config --global user.name "Krishna Das Meena"
+        git config --global user.email "mek127142@gmail.com"
+        git add .
+        git commit -m "Automated update: $(date -u)" || echo "No changes"
+        git push
