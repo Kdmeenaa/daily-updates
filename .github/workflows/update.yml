@@ -1,7 +1,7 @@
+name: Daily Auto Commit
+
 permissions:
   contents: write
-
-name: Daily Auto Commit
 
 on:
   schedule:
@@ -16,7 +16,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Update a timestamp file
+    - name: Update daily file
       run: |
         echo "Last update: $(date '+%Y-%m-%d %H:%M:%S')" > daily_update.txt
 
@@ -25,7 +25,7 @@ jobs:
         git config --global user.name "Krishna Das Meena"
         git config --global user.email "mek127142@gmail.com"
         git add .
-        git commit -m "Daily auto commit: $(date)" || echo "No changes to commit"
+        git commit -m "Daily auto commit: $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes"
 
-    - name: Push
+    - name: Push changes
       run: git push
