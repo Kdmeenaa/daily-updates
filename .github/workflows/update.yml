@@ -2,25 +2,27 @@ name: Daily Auto Commit
 
 on:
   schedule:
-    - cron: "0 7 * * *"  # 7AM EVERYDAY 
+    - cron: "30 3 * * *"   # India 9:00 AM (UTC+5:30)
   workflow_dispatch:
 
 jobs:
-  update:
+  auto_commit_job:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Update README
+    - name: Update a timestamp file
       run: |
-        echo "Last update: $(date -u)" > README.md
+        echo "Last update: $(date '+%Y-%m-%d %H:%M:%S')" > daily_update.txt
 
     - name: Commit changes
       run: |
         git config --global user.name "Krishna Das Meena"
         git config --global user.email "mek127142@gmail.com"
         git add .
-        git commit -m "Automated update: $(date -u)" || echo "No changes"
-        git push
+        git commit -m "Daily auto commit: $(date)" || echo "No changes to commit"
+
+    - name: Push
+      run: git push
